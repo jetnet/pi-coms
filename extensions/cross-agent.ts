@@ -82,7 +82,7 @@ function scanCommands(dir: string): Discovered[] {
 	try {
 		for (const file of readdirSync(dir)) {
 			if (!file.endsWith(".md")) continue;
-			const raw = readFileSync(join(dir, file), "utf-8");
+			const raw = readFileSync(join(dir, file), "utf-8").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 			const { description, body } = parseFrontmatter(raw);
 			items.push({
 				name: basename(file, ".md"),
@@ -102,7 +102,7 @@ function scanSkills(dir: string): Discovered[] {
 			const skillFile = join(dir, entry, "SKILL.md");
 			const flatFile = join(dir, entry);
 			if (existsSync(skillFile) && statSync(skillFile).isFile()) {
-				const raw = readFileSync(skillFile, "utf-8");
+				const raw = readFileSync(skillFile, "utf-8").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 				const { description, body } = parseFrontmatter(raw);
 				items.push({
 					name: entry,
@@ -110,7 +110,7 @@ function scanSkills(dir: string): Discovered[] {
 					content: raw,
 				});
 			} else if (entry.endsWith(".md") && statSync(flatFile).isFile()) {
-				const raw = readFileSync(flatFile, "utf-8");
+				const raw = readFileSync(flatFile, "utf-8").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 				const { description, body } = parseFrontmatter(raw);
 				items.push({
 					name: basename(entry, ".md"),
@@ -129,7 +129,7 @@ function scanAgents(dir: string): Discovered[] {
 	try {
 		for (const file of readdirSync(dir)) {
 			if (!file.endsWith(".md")) continue;
-			const raw = readFileSync(join(dir, file), "utf-8");
+			const raw = readFileSync(join(dir, file), "utf-8").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 			const { fields } = parseFrontmatter(raw);
 			items.push({
 				name: fields.name || basename(file, ".md"),

@@ -1,3 +1,13 @@
+/**
+ * ⚠️  LIMITATION: damage-control only protects tool calls in the process where
+ * this extension is loaded. Subagents spawned by agent-team, subagent-widget,
+ * or pi-pi run as separate `pi` processes — unless they are also launched with
+ * `-e damage-control.ts`, the rules defined here will NOT be enforced.
+ *
+ * As of this fix, agent-team.ts and subagent-widget.ts forward the
+ * damage-control extension to subagents automatically. However, `ask: true`
+ * prompts will not work headlessly — those rules will hard-block instead.
+ */
 import type { ExtensionAPI, ToolCallEvent } from "@mariozechner/pi-coding-agent";
 import { isToolCallEventType } from "@mariozechner/pi-coding-agent";
 import { parse as yamlParse } from "yaml";
@@ -65,7 +75,7 @@ export default function (pi: ExtensionAPI) {
 		const rulesPath = fs.existsSync(projectRulesPath) ? projectRulesPath : fs.existsSync(globalRulesPath) ? globalRulesPath : null;
 		try {
 			if (rulesPath) {
-				const content = fs.readFileSync(rulesPath, "utf8");
+				const content = fs.readFileSync(rulesPath, "utf8").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 				const loaded = yamlParse(content) as Partial<Rules>;
 				rules = {
 					bashToolPatterns: loaded.bashToolPatterns || [],
