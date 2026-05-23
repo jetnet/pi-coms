@@ -20,6 +20,9 @@
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth } from "@mariozechner/pi-tui";
 import { applyExtensionDefaults } from "./themeMap.ts";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 
 export default function (pi: ExtensionAPI) {
 	let currentCtx: ExtensionContext | undefined;
@@ -79,6 +82,19 @@ export default function (pi: ExtensionAPI) {
 		return themes.findIndex((t) => t.name === current);
 	}
 
+	/** Persist the selected theme name to ~/.pi/agent/settings.json */
+	function persistTheme(themeName: string): void {
+		try {
+			const settingsPath = path.join(os.homedir(), ".pi", "agent", "settings.json");
+			const raw = fs.existsSync(settingsPath) ? fs.readFileSync(settingsPath, "utf-8") : "{}";
+			const settings = JSON.parse(raw);
+			settings.theme = themeName;
+			fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf-8");
+		} catch {
+			// best-effort
+		}
+	}
+
 	function cycleTheme(ctx: ExtensionContext, direction: 1 | -1) {
 		if (!ctx.hasUI) return;
 
@@ -96,6 +112,7 @@ export default function (pi: ExtensionAPI) {
 		const result = ctx.ui.setTheme(theme.name);
 
 		if (result.success) {
+			persistTheme(theme.name);
 			updateStatus(ctx);
 			showSwatch(ctx);
 			ctx.ui.notify(`${theme.name} (${index + 1}/${themes.length})`, "info");
@@ -136,6 +153,7 @@ export default function (pi: ExtensionAPI) {
 			if (arg) {
 				const result = ctx.ui.setTheme(arg);
 				if (result.success) {
+					persistTheme(arg);
 					updateStatus(ctx);
 					showSwatch(ctx);
 					ctx.ui.notify(`Theme: ${arg}`, "info");
@@ -157,6 +175,7 @@ export default function (pi: ExtensionAPI) {
 			const selectedName = selected.split(/\s/)[0];
 			const result = ctx.ui.setTheme(selectedName);
 			if (result.success) {
+				persistTheme(selectedName);
 				updateStatus(ctx);
 				showSwatch(ctx);
 				ctx.ui.notify(`Theme: ${selectedName}`, "info");
