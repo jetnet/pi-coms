@@ -22,16 +22,27 @@ import { spawn } from "child_process";
 import { readdirSync, readFileSync, existsSync, mkdirSync } from "fs";
 import { join, resolve } from "path";
 import { applyExtensionDefaults } from "./themeMap.ts";
+import { loadAgentFile, formatIssues, type AgentDef } from "./utils/agent-loader.ts";
+
+// Resolve pi CLI script for snap-safe subprocess spawning (PR #13)
+function findPiCli(): { cmd: string; prefixArgs: string[] } {
+	try {
+		const piPath = require.resolve("@mariozechner/pi-coding-agent/dist/cli.js");
+		return { cmd: process.execPath, prefixArgs: [piPath] };
+	} catch {
+		try {
+			const piPath = require.resolve("@earendil-works/pi-coding-agent/dist/cli.js");
+			return { cmd: process.execPath, prefixArgs: [piPath] };
+		} catch {
+			return { cmd: "pi", prefixArgs: [] };
+		}
+	}
+}
 
 // ── Types ────────────────────────────────────────
 
-interface ExpertDef {
-	name: string;
-	description: string;
-	tools: string;
-	systemPrompt: string;
-	file: string;
-}
+// ExpertDef reuses the validated AgentDef shape from shared loader
+type ExpertDef = AgentDef;
 
 interface ExpertState {
 	def: ExpertDef;
@@ -50,31 +61,12 @@ function displayName(name: string): string {
 }
 
 function parseAgentFile(filePath: string): ExpertDef | null {
-	try {
-		const raw = readFileSync(filePath, "utf-8");
-		const match = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-		if (!match) return null;
-
-		const frontmatter: Record<string, string> = {};
-		for (const line of match[1].split("\n")) {
-			const idx = line.indexOf(":");
-			if (idx > 0) {
-				frontmatter[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
-			}
-		}
-
-		if (!frontmatter.name) return null;
-
-		return {
-			name: frontmatter.name,
-			description: frontmatter.description || "",
-			tools: frontmatter.tools || "read,grep,find,ls",
-			systemPrompt: match[2].trim(),
-			file: filePath,
-		};
-	} catch {
-		return null;
+	const { agent, issues } = loadAgentFile(filePath);
+	if (issues.length > 0) {
+		const warnings = formatIssues(issues.filter(i => i.severity === "warning"), filePath);
+		if (warnings) console.error(`[pi-pi] ${warnings}`);
 	}
+	return agent;
 }
 
 // ── Expert card colors ────────────────────────────
@@ -134,7 +126,7 @@ export default function (pi: ExtensionAPI) {
 	// ── Grid Rendering ───────────────────────────
 
 	function renderCard(state: ExpertState, colWidth: number, theme: any): string[] {
-		const w = colWidth - 2;
+		const w = Math.max(1, colWidth - 2);
 		const truncate = (s: string, max: number) => s.length > max ? s.slice(0, max - 3) + "..." : s;
 
 		const statusColor = state.status === "idle" ? "dim"
@@ -202,13 +194,13 @@ export default function (pi: ExtensionAPI) {
 			return {
 				render(width: number): string[] {
 					if (experts.size === 0) {
-						return ["", theme.fg("dim", "  No experts found. Add agent .md files to .pi/agents/pi-pi/")];
+						return ["", truncateToWidth(theme.fg("dim", "  No experts found. Add agent .md files to .pi/agents/pi-pi/"), width, "")];
 					}
 
 					const cols = Math.min(gridCols, experts.size);
 					const gap = 1;
 					// avoid Text component's ANSI-width miscounting by returning raw lines
-					const colWidth = Math.floor((width - gap * (cols - 1)) / cols) - 1;
+					const colWidth = Math.max(3, Math.floor((width - gap * (cols - 1)) / cols) - 1);
 					const allExperts = Array.from(experts.values());
 
 					const lines: string[] = [""]; // top margin
@@ -291,7 +283,8 @@ export default function (pi: ExtensionAPI) {
 		const textChunks: string[] = [];
 
 		return new Promise((resolve) => {
-			const proc = spawn("pi", args, {
+			const piCli = findPiCli();
+			const proc = spawn(piCli.cmd, [...piCli.prefixArgs, ...args], {
 				stdio: ["ignore", "pipe", "pipe"],
 				env: { ...process.env },
 			});
@@ -564,7 +557,7 @@ Ask specific questions about what you need to BUILD. Each expert will return doc
 		const orchestratorPath = join(_ctx.cwd, ".pi", "agents", "pi-pi", "pi-orchestrator.md");
 		let systemPrompt = "";
 		try {
-			const raw = readFileSync(orchestratorPath, "utf-8");
+			const raw = readFileSync(orchestratorPath, "utf-8").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 			const match = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
 			const template = match ? match[2].trim() : raw;
 			

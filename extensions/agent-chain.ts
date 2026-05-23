@@ -28,6 +28,22 @@ import { spawn } from "child_process";
 import { readFileSync, existsSync, readdirSync, mkdirSync, unlinkSync } from "fs";
 import { join, resolve } from "path";
 import { applyExtensionDefaults } from "./themeMap.ts";
+import { loadAgentFile, formatIssues, type AgentDef } from "./utils/agent-loader.ts";
+
+// Resolve pi CLI script for snap-safe subprocess spawning (PR #13)
+function findPiCli(): { cmd: string; prefixArgs: string[] } {
+	try {
+		const piPath = require.resolve("@mariozechner/pi-coding-agent/dist/cli.js");
+		return { cmd: process.execPath, prefixArgs: [piPath] };
+	} catch {
+		try {
+			const piPath = require.resolve("@earendil-works/pi-coding-agent/dist/cli.js");
+			return { cmd: process.execPath, prefixArgs: [piPath] };
+		} catch {
+			return { cmd: "pi", prefixArgs: [] };
+		}
+	}
+}
 
 // ── Types ────────────────────────────────────────
 
@@ -42,12 +58,7 @@ interface ChainDef {
 	steps: ChainStep[];
 }
 
-interface AgentDef {
-	name: string;
-	description: string;
-	tools: string;
-	systemPrompt: string;
-}
+// AgentDef is now imported from utils/agent-loader.ts
 
 interface StepState {
 	agent: string;
@@ -133,30 +144,12 @@ function parseChainYaml(raw: string): ChainDef[] {
 // ── Frontmatter Parser ───────────────────────────
 
 function parseAgentFile(filePath: string): AgentDef | null {
-	try {
-		const raw = readFileSync(filePath, "utf-8");
-		const match = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-		if (!match) return null;
-
-		const frontmatter: Record<string, string> = {};
-		for (const line of match[1].split("\n")) {
-			const idx = line.indexOf(":");
-			if (idx > 0) {
-				frontmatter[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
-			}
-		}
-
-		if (!frontmatter.name) return null;
-
-		return {
-			name: frontmatter.name,
-			description: frontmatter.description || "",
-			tools: frontmatter.tools || "read,grep,find,ls",
-			systemPrompt: match[2].trim(),
-		};
-	} catch {
-		return null;
+	const { agent, issues } = loadAgentFile(filePath);
+	if (issues.length > 0) {
+		const warnings = formatIssues(issues.filter(i => i.severity === "warning"), filePath);
+		if (warnings) console.error(`[agent-chain] ${warnings}`);
 	}
+	return agent;
 }
 
 function scanAgentDirs(cwd: string): Map<string, AgentDef> {
@@ -216,7 +209,7 @@ export default function (pi: ExtensionAPI) {
 		const chainPath = join(cwd, ".pi", "agents", "agent-chain.yaml");
 		if (existsSync(chainPath)) {
 			try {
-				chains = parseChainYaml(readFileSync(chainPath, "utf-8"));
+				chains = parseChainYaml(readFileSync(chainPath, "utf-8").replace(/\r\n/g, "\n").replace(/\r/g, "\n"));
 			} catch {
 				chains = [];
 			}
@@ -364,7 +357,8 @@ export default function (pi: ExtensionAPI) {
 		const state = stepStates[stepIndex];
 
 		return new Promise((resolve) => {
-			const proc = spawn("pi", args, {
+			const piCli = findPiCli();
+			const proc = spawn(piCli.cmd, [...piCli.prefixArgs, ...args], {
 				stdio: ["ignore", "pipe", "pipe"],
 				env: { ...process.env },
 			});

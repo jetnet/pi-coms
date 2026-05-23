@@ -22,6 +22,24 @@ import * as os from "os";
 import * as path from "path";
 import { applyExtensionDefaults } from "./themeMap.ts";
 
+// Resolve damage-control extension path for forwarding to subagents
+const DAMAGE_CONTROL_PATH = path.join(path.dirname(import.meta.url.replace("file://", "")), "damage-control.ts");
+
+// Resolve pi CLI script for snap-safe subprocess spawning (PR #13)
+function findPiCli(): { cmd: string; prefixArgs: string[] } {
+	try {
+		const piPath = require.resolve("@mariozechner/pi-coding-agent/dist/cli.js");
+		return { cmd: process.execPath, prefixArgs: [piPath] };
+	} catch {
+		try {
+			const piPath = require.resolve("@earendil-works/pi-coding-agent/dist/cli.js");
+			return { cmd: process.execPath, prefixArgs: [piPath] };
+		} catch {
+			return { cmd: "pi", prefixArgs: [] };
+		}
+	}
+}
+
 interface SubState {
 	id: number;
 	status: "running" | "done" | "error";
@@ -139,11 +157,15 @@ export default function (pi: ExtensionAPI) {
 			: "openrouter/google/gemini-3-flash-preview";
 
 		return new Promise<void>((resolve) => {
-			const proc = spawn("pi", [
+			// Forward damage-control extension to subagents if it exists
+			const dcExists = fs.existsSync(DAMAGE_CONTROL_PATH);
+
+			const piCli = findPiCli();
+			const proc = spawn(piCli.cmd, [...piCli.prefixArgs,
 				"--mode", "json",
 				"-p",
 				"--session", state.sessionFile,   // persistent session for /subcont resumption
-				"--no-extensions",
+				...(dcExists ? ["-e", DAMAGE_CONTROL_PATH] : ["--no-extensions"]),
 				"--model", model,
 				"--tools", "read,bash,grep,find,ls",
 				"--thinking", "off",

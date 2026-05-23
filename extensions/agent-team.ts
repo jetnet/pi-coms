@@ -22,18 +22,34 @@ import { Type } from "@sinclair/typebox";
 import { Text, type AutocompleteItem, truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 import { spawn } from "child_process";
 import { readdirSync, readFileSync, existsSync, mkdirSync, unlinkSync } from "fs";
-import { join, resolve } from "path";
+import { join, resolve, dirname } from "path";
+import { fileURLToPath } from "url";
 import { applyExtensionDefaults } from "./themeMap.ts";
+import { loadAgentFile, formatIssues, type AgentDef } from "./utils/agent-loader.ts";
+
+// Resolve damage-control extension path for forwarding to subagents
+const __extensionsDir = dirname(fileURLToPath(import.meta.url));
+const DAMAGE_CONTROL_PATH = join(__extensionsDir, "damage-control.ts");
+
+// Resolve pi CLI script for snap-safe subprocess spawning (PR #13)
+function findPiCli(): { cmd: string; prefixArgs: string[] } {
+	try {
+		const piPath = require.resolve("@mariozechner/pi-coding-agent/dist/cli.js");
+		return { cmd: process.execPath, prefixArgs: [piPath] };
+	} catch {
+		// Fallback: require.resolve not available, try @earendil-works variant
+		try {
+			const piPath = require.resolve("@earendil-works/pi-coding-agent/dist/cli.js");
+			return { cmd: process.execPath, prefixArgs: [piPath] };
+		} catch {
+			return { cmd: "pi", prefixArgs: [] };
+		}
+	}
+}
 
 // ── Types ────────────────────────────────────────
 
-interface AgentDef {
-	name: string;
-	description: string;
-	tools: string;
-	systemPrompt: string;
-	file: string;
-}
+// AgentDef is now imported from utils/agent-loader.ts
 
 interface AgentState {
 	def: AgentDef;
@@ -74,34 +90,15 @@ function parseTeamsYaml(raw: string): Record<string, string[]> {
 	return teams;
 }
 
-// ── Frontmatter Parser ───────────────────────────
+// ── Frontmatter Parser (delegates to shared validated loader) ────
 
 function parseAgentFile(filePath: string): AgentDef | null {
-	try {
-		const raw = readFileSync(filePath, "utf-8");
-		const match = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-		if (!match) return null;
-
-		const frontmatter: Record<string, string> = {};
-		for (const line of match[1].split("\n")) {
-			const idx = line.indexOf(":");
-			if (idx > 0) {
-				frontmatter[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
-			}
-		}
-
-		if (!frontmatter.name) return null;
-
-		return {
-			name: frontmatter.name,
-			description: frontmatter.description || "",
-			tools: frontmatter.tools || "read,grep,find,ls",
-			systemPrompt: match[2].trim(),
-			file: filePath,
-		};
-	} catch {
-		return null;
+	const { agent, issues } = loadAgentFile(filePath);
+	if (issues.length > 0) {
+		const warnings = formatIssues(issues.filter(i => i.severity === "warning"), filePath);
+		if (warnings) console.error(`[agent-team] ${warnings}`);
 	}
+	return agent;
 }
 
 function scanAgentDirs(cwd: string): AgentDef[] {
@@ -158,7 +155,7 @@ export default function (pi: ExtensionAPI) {
 		const teamsPath = join(cwd, ".pi", "agents", "teams.yaml");
 		if (existsSync(teamsPath)) {
 			try {
-				teams = parseTeamsYaml(readFileSync(teamsPath, "utf-8"));
+				teams = parseTeamsYaml(readFileSync(teamsPath, "utf-8").replace(/\r\n/g, "\n").replace(/\r/g, "\n"));
 			} catch {
 				teams = {};
 			}
@@ -204,7 +201,7 @@ export default function (pi: ExtensionAPI) {
 	// ── Grid Rendering ───────────────────────────
 
 	function renderCard(state: AgentState, colWidth: number, theme: any): string[] {
-		const w = colWidth - 2;
+		const w = Math.max(1, colWidth - 2);
 		const truncate = (s: string, max: number) => s.length > max ? s.slice(0, max - 3) + "..." : s;
 
 		const statusColor = state.status === "idle" ? "dim"
@@ -267,7 +264,7 @@ export default function (pi: ExtensionAPI) {
 
 					const cols = Math.min(gridCols, agentStates.size);
 					const gap = 1;
-					const colWidth = Math.floor((width - gap * (cols - 1)) / cols);
+					const colWidth = Math.max(3, Math.floor((width - gap * (cols - 1)) / cols));
 					const agents = Array.from(agentStates.values());
 					const rows: string[][] = [];
 
@@ -344,10 +341,13 @@ export default function (pi: ExtensionAPI) {
 		const agentSessionFile = join(sessionDir, `${agentKey}.json`);
 
 		// Build args — first run creates session, subsequent runs resume
+		// Forward damage-control extension to subagents if it exists
+		const dcExists = existsSync(DAMAGE_CONTROL_PATH);
+
 		const args = [
 			"--mode", "json",
 			"-p",
-			"--no-extensions",
+			...(dcExists ? ["-e", DAMAGE_CONTROL_PATH] : ["--no-extensions"]),
 			"--model", model,
 			"--tools", state.def.tools,
 			"--thinking", "off",
@@ -365,7 +365,8 @@ export default function (pi: ExtensionAPI) {
 		const textChunks: string[] = [];
 
 		return new Promise((resolve) => {
-			const proc = spawn("pi", args, {
+			const piCli = findPiCli();
+			const proc = spawn(piCli.cmd, [...piCli.prefixArgs, ...args], {
 				stdio: ["ignore", "pipe", "pipe"],
 				env: { ...process.env },
 			});
