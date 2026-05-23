@@ -368,6 +368,20 @@ export default function (pi: ExtensionAPI) {
 
 		nudgedThisCycle = true;
 
+		// Guard: avoid sending nudge if context is very large (>150 messages)
+		// to prevent orphaned tool_result errors after context truncation.
+		// The API rejects tool_result blocks whose matching tool_use was truncated.
+		try {
+			const branch = _ctx.sessionManager.getBranch();
+			if (branch.length > 150) {
+				// Too deep — skip the nudge to avoid 400 errors
+				return;
+			}
+		} catch {
+			// If we can't check, skip to be safe
+			return;
+		}
+
 		const taskList = incomplete
 			.map((t) => `  ${STATUS_ICON[t.status]} #${t.id} [${STATUS_LABEL[t.status]}]: ${t.text}`)
 			.join("\n");
