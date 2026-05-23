@@ -95,8 +95,8 @@ function parseTeamsYaml(raw: string): Record<string, string[]> {
 function parseAgentFile(filePath: string): AgentDef | null {
 	const { agent, issues } = loadAgentFile(filePath);
 	if (issues.length > 0) {
-		const warnings = formatIssues(issues.filter(i => i.severity === "warning"), filePath);
-		if (warnings) console.error(`[agent-team] ${warnings}`);
+		const formatted = formatIssues(issues, filePath);
+		if (formatted) console.error(`[agent-team] ${formatted}`);
 	}
 	return agent;
 }

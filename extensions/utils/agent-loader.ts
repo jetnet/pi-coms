@@ -7,7 +7,7 @@
  * Validation layers:
  *   1. Name — alphanumeric + dashes/underscores/dots, max 64 chars
  *   2. Tools — checked against a known allowlist, warns on unknowns
- *   3. System prompt — scanned for injection patterns, capped at 50K chars
+ *   3. System prompt — scanned for high-confidence unsafe patterns, capped at 50K chars
  */
 
 import { readFileSync } from "fs";
@@ -54,12 +54,17 @@ const KNOWN_TOOLS = new Set([
 ]);
 
 /**
- * Injection patterns in system prompts that could escape into shell args.
+ * High-confidence unsafe prompt patterns.
+ *
+ * Backticks are intentionally allowed: these agent files are Markdown, and
+ * fenced/inline code examples are normal documentation. Subagents receive the
+ * prompt via spawn() argument arrays (not a shell), so Markdown backticks are
+ * not command substitution at this boundary.
+ *
  * Each is { regex, reason }. Error-severity → agent rejected.
  */
 const INJECTION_PATTERNS: { regex: RegExp; reason: string }[] = [
 	{ regex: /\$\(/, reason: "command substitution $(…)" },
-	{ regex: /`[^`]+`/, reason: "backtick command substitution" },
 	{ regex: /\|\s*(sh|bash|zsh|dash|ksh)\b/, reason: "pipe to shell interpreter" },
 	{ regex: /\x00/, reason: "null byte" },
 	{ regex: /\beval\s*\(/, reason: "eval() call" },

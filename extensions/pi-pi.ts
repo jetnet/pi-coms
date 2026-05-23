@@ -63,8 +63,8 @@ function displayName(name: string): string {
 function parseAgentFile(filePath: string): ExpertDef | null {
 	const { agent, issues } = loadAgentFile(filePath);
 	if (issues.length > 0) {
-		const warnings = formatIssues(issues.filter(i => i.severity === "warning"), filePath);
-		if (warnings) console.error(`[pi-pi] ${warnings}`);
+		const formatted = formatIssues(issues, filePath);
+		if (formatted) console.error(`[pi-pi] ${formatted}`);
 	}
 	return agent;
 }

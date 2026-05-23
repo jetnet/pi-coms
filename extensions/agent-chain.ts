@@ -146,8 +146,8 @@ function parseChainYaml(raw: string): ChainDef[] {
 function parseAgentFile(filePath: string): AgentDef | null {
 	const { agent, issues } = loadAgentFile(filePath);
 	if (issues.length > 0) {
-		const warnings = formatIssues(issues.filter(i => i.severity === "warning"), filePath);
-		if (warnings) console.error(`[agent-chain] ${warnings}`);
+		const formatted = formatIssues(issues, filePath);
+		if (formatted) console.error(`[agent-chain] ${formatted}`);
 	}
 	return agent;
 }

