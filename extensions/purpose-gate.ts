@@ -33,6 +33,7 @@ function bold(s: string): string {
 
 export default function (pi: ExtensionAPI) {
 	let purpose: string | undefined;
+	let purposeEnabled = true;  // toggle state
 
 	async function askForPurpose(ctx: any) {
 		while (!purpose) {
@@ -67,14 +68,73 @@ export default function (pi: ExtensionAPI) {
 		void askForPurpose(ctx);
 	});
 
+	pi.registerCommand("purpose", {
+		description: "Toggle purpose gate on/off, or set a new purpose: /purpose [on|off|set]",
+		handler: async (args, ctx) => {
+			const cmd = (args || "").trim().toLowerCase();
+
+			if (cmd === "off") {
+				purposeEnabled = false;
+				ctx.ui.setWidget("purpose", undefined);
+				ctx.ui.notify("Purpose gate disabled — prompts are no longer filtered.", "info");
+				return;
+			}
+
+			if (cmd === "on") {
+				purposeEnabled = true;
+				if (purpose) {
+					// Re-show widget
+					ctx.ui.setWidget("purpose", () => ({
+						render(width: number): string[] {
+							const pad = bg(" ".repeat(width));
+							const label = pink(bold("  PURPOSE: "));
+							const msg = cyan(bold(purpose!));
+							const content = bg(truncateToWidth(label + msg + " ".repeat(width), width, ""));
+							return [pad, content, pad];
+						},
+						invalidate() {},
+					}));
+					ctx.ui.notify(`Purpose gate enabled: ${purpose}`, "info");
+				} else {
+					void askForPurpose(ctx);
+				}
+				return;
+			}
+
+			if (cmd === "set" || cmd === "") {
+				const prev = purpose;
+				purpose = undefined;
+				purposeEnabled = true;
+				void askForPurpose(ctx);
+				return;
+			}
+
+			// Treat anything else as the new purpose directly
+			purpose = cmd;
+			purposeEnabled = true;
+			ctx.ui.setWidget("purpose", () => ({
+				render(width: number): string[] {
+					const pad = bg(" ".repeat(width));
+					const label = pink(bold("  PURPOSE: "));
+					const msg = cyan(bold(purpose!));
+					const content = bg(truncateToWidth(label + msg + " ".repeat(width), width, ""));
+					return [pad, content, pad];
+				},
+				invalidate() {},
+			}));
+			ctx.ui.notify(`Purpose set: ${purpose}`, "info");
+		},
+	});
+
 	pi.on("before_agent_start", async (event) => {
-		if (!purpose) return;
+		if (!purpose || !purposeEnabled) return;
 		return {
 			systemPrompt: event.systemPrompt + `\n\n<purpose>\nYour singular purpose this session: ${purpose}\nStay focused on this goal. If a request drifts from this purpose, gently remind the user.\n</purpose>`,
 		};
 	});
 
 	pi.on("input", async (_event, ctx) => {
+		if (!purposeEnabled) return { action: "continue" as const };
 		if (!purpose) {
 			ctx.ui.notify("Set a purpose first.", "warning");
 			return { action: "handled" as const };
