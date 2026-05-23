@@ -24,4 +24,28 @@ function write(
   path: string,         // Path to the file to write (relative or absolute)
   content: string       // Content to write to the file
 ): void;
+
+// Search file contents. Uses ripgrep-compatible matching under the hood.
+function grep(
+  pattern: string,      // Text or regex pattern to search for
+  path?: string,        // File or directory to search; defaults to cwd
+  glob?: string,        // Optional file glob filter
+  ignoreCase?: boolean,
+  literal?: boolean,    // Treat pattern literally instead of as regex
+  context?: number,     // Number of context lines around matches
+  limit?: number        // Max matches/results to return
+): string;
+
+// Find files by glob pattern.
+function find(
+  pattern: string,      // Glob pattern to match
+  path?: string,        // Directory to search; defaults to cwd
+  limit?: number        // Max paths to return
+): string;
+
+// List a directory or file.
+function ls(
+  path?: string,        // Path to list; defaults to cwd
+  limit?: number        // Max entries to return
+): string;
 ```
