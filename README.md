@@ -1,6 +1,6 @@
 # pi-vs-cc
 
-A collection of [Pi Coding Agent](https://github.com/mariozechner/pi-coding-agent) customized instances. _Why?_ To showcase what it looks like to hedge against the leader in the agentic coding market, Claude Code. Here we showcase how you can customize the UI, agent orchestration tools, safety auditing, agent to agent orchestration, and cross-agent integrations. 
+A collection of [Pi Coding Agent](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) customized instances. _Why?_ To showcase what it looks like to hedge against the leader in the agentic coding market, Claude Code. Here we showcase how you can customize the UI, agent orchestration tools, safety auditing, agent to agent orchestration, and cross-agent integrations. 
 
 > Want to see these **6+ unique Pi Agent Harnesses in action?** Watch [Pi Coding Agent: The Only Claude Code Competitor](https://youtu.be/f8cfH5XX-XU).
 
@@ -20,7 +20,7 @@ All three are required:
 | --------------- | ------------------------- | ---------------------------------------------------------- |
 | **Bun** ≥ 1.3.2 | Runtime & package manager | [bun.sh](https://bun.sh)                                   |
 | **just**        | Task runner               | `brew install just`                                        |
-| **pi**          | Pi Coding Agent CLI       | [Pi docs](https://github.com/mariozechner/pi-coding-agent) |
+| **pi**          | Pi Coding Agent CLI       | [Pi docs](https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent) |
 
 ---
 
@@ -80,7 +80,7 @@ bun install
 | **pure-focus**          | `extensions/pure-focus.ts`          | Removes the footer bar and status line entirely — pure distraction-free mode                                                                               |
 | **minimal**             | `extensions/minimal.ts`             | Compact footer showing model name and a 10-block context usage meter `[###-------] 30%`                                                                    |
 | **cross-agent**         | `extensions/cross-agent.ts`         | Scans `.claude/`, `.gemini/`, `.codex/` dirs for commands, skills, and agents and registers them in Pi                                                     |
-| **purpose-gate**        | `extensions/purpose-gate.ts`        | Prompts you to declare session intent on startup; shows a persistent purpose widget and blocks prompts until answered                                      |
+| **purpose-gate**        | `extensions/purpose-gate.ts`        | Prompts you to declare session intent on startup; shows a persistent purpose widget and blocks prompts until answered. Use `/purpose off` to toggle, `/purpose set` to change |
 | **tool-counter**        | `extensions/tool-counter.ts`        | Rich two-line footer: model + context meter + token/cost stats on line 1, cwd/branch + per-tool call tally on line 2                                       |
 | **tool-counter-widget** | `extensions/tool-counter-widget.ts` | Live-updating above-editor widget showing per-tool call counts with background colors                                                                      |
 | **subagent-widget**     | `extensions/subagent-widget.ts`     | `/sub <task>` command that spawns background Pi subagents; each gets its own streaming live-progress widget                                                |
@@ -94,7 +94,7 @@ bun install
 | **coms**                | `extensions/coms.ts`                | Peer-to-peer messaging between Pi agents on the **same machine** over Unix sockets / named pipes. Tools: `coms_list`, `coms_send`, `coms_get`, `coms_await` |
 | **coms-net**            | `extensions/coms-net.ts`            | Networked Pi-to-Pi via a shared HTTP/SSE hub (`scripts/coms-net-server.ts`). Works across machines on a LAN or behind a remote URL. Tools: `coms_net_*`     |
 | **session-replay**      | `extensions/session-replay.ts`      | Scrollable timeline overlay of session history - showcasing customizable dialog UI                                                                         |
-| **theme-cycler**        | `extensions/theme-cycler.ts`        | Keyboard shortcuts (Ctrl+X/Ctrl+Q) and `/theme` command to cycle/switch between custom themes                                                              |
+| **theme-cycler**        | `extensions/theme-cycler.ts`        | Keyboard shortcuts (Ctrl+X/Ctrl+Q) and `/theme` command to cycle/switch between custom themes; persists selection to `~/.pi/agent/settings.json`            |
 
 ---
 
@@ -167,6 +167,8 @@ just open purpose-gate minimal tool-counter-widget
 ```
 pi-vs-cc/
 ├── extensions/          # Pi extension source files (.ts) — one file per extension
+│   └── utils/           # Shared utilities (agent-loader.ts — validated agent file parser)
+├── tests/               # Unit tests (agent-loader.test.ts — 22 tests)
 ├── specs/               # Feature specifications for extensions
 ├── .pi/
 │   ├── agent-sessions/  # Ephemeral session files (gitignored)
@@ -211,6 +213,8 @@ Unlike the dynamic dispatcher, `agent-chain` acts as a sequential pipeline orche
 ---
 
 ## Pi-to-Pi Agent-to-Agent Communication
+
+For a detailed setup guide, including heterogeneous model examples and troubleshooting, see [`PI_TO_PI_DIFFERENT_MODELS.md`](PI_TO_PI_DIFFERENT_MODELS.md). If you do not use `just`, start agents with [`scripts/start-pi2pi.sh`](scripts/start-pi2pi.sh).
 
 <div align="center">
   <img src="./images/01-hero.png" alt="Pi to Pi — Two-Way Agent Communication with the Pi Coding Agent" width="700">
@@ -336,6 +340,8 @@ The `damage-control` extension provides real-time security hooks to prevent cata
 - **No-Delete Paths**: Allows modifying but prevents deleting critical project configuration (`.git/`, `Dockerfile`, `README.md`).
 
 For a "soft" variant that lets the agent keep working after a block (turn continues with actionable feedback instead of aborting), use [`damage-control-continue`](extensions/damage-control-continue.ts).
+
+> **Subagent protection**: `agent-team` and `subagent-widget` automatically forward `damage-control.ts` to subagent processes when the extension file is present. Note that `ask: true` confirmation prompts are not interactive in headless subagents — those rules will hard-block instead.
 
 ---
 

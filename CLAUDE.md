@@ -9,6 +9,8 @@ Pi Coding Agent extension examples and experiments.
 
 ## Project Structure
 - `extensions/` — Pi extension source files (.ts)
+  - `extensions/utils/` — Shared utilities (agent-loader.ts — validated agent file parser)
+- `tests/` — Unit tests (`npx tsx --test tests/agent-loader.test.ts`)
 - `specs/` — Feature specifications
 - `.pi/agents/` — Agent definitions for agent-team extension
 - `.pi/agent-sessions/` — Ephemeral session files (gitignored)
